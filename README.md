@@ -135,6 +135,3 @@ The corresponding processed event is:
 | user_remote	| agent3
 |  user_submit	| agent3
 ```
-
-
-           
