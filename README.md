@@ -58,6 +58,10 @@ Exeute the search query to get json response and read each entry in ElasticSearc
       entry['_source']['user'] # to get the user of a workflow
  ```
 
+** Getting processed event **
+The method in script: "get_processed_event()" has code for retrieving the processed event. The paramters derived for processedevent
+can be found in the link:
+<https://docs.google.com/document/d/1j5unwMUpc588cV5a_G9g664KLj_D-w12z12G602aVhA/edit>
 
 
 
