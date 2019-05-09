@@ -65,7 +65,7 @@ can be found in the link:
 
 A sample example of pegasus-composite event :
 
-| Parameter  | Value|
+| Parameter| Value|
 | ---------- | ------ |
 | @timestamp |  Apr 29, 2019 @ 21:07:15.000 |
 | @version   |		1                  | 
