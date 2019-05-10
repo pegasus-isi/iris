@@ -1,6 +1,12 @@
 
 
-The script to pull events from ElasticSearch and process them to derive set of attributes required for clustering is present in /extractor directory
+# File Descriptions :
+```/extractor/workflow-composite-events-postprocess-index.py``` The script to pull events from ElasticSearch and process them to derive set of attributes required for clustering and save the processed event to another index
+```/extractor/read_processed_events.py``` A simple python script to read events from an ElasticSearch client and index for processed events and saves the events to a dataframe object.
+
+```/results/events_es.ipynb```  Ipython that can be run on jupyter notebooks or using <https://colab.google.com>. This script reads events from a csv file and performs analysis and clustering on data collected (only bamboo user)
+```/results/read_events_es.ipynb```   Ipython that can be run on jupyter notebooks or using <https://colab.google.com>. This script reads events from ElasticSearch client from index "processed-workflow-composite-events*" and performs analysis and clustering on data collected (all users are included in the data collected)
+```results/y```  A simple python script t
 
 **Clone**
 
