@@ -30,11 +30,11 @@ def add_file_entries(modified_entry,entry_id,id,filename,checksum,actual__checks
      modified_entry["_id"] = entry_id
      modified_entry["origin_id"] = id
      modified_entry['filename'] = filename
-     modified_entry['checksum__failure'] = checksum
-     modified_entry["actual__checksum"] = actual__checksum
-     modified_entry["expected__checksum"] = expected__checksum  
-     modified_entry['source__proto__host'] = source__proto__host
-     modified_entry['dest__proto__host'] = dest__proto__host
+     modified_entry['checksum_failure'] = checksum
+     modified_entry["actual_checksum"] = actual__checksum
+     modified_entry["expected_checksum"] = expected__checksum  
+     modified_entry['source_proto_host'] = source__proto__host
+     modified_entry['dest_proto_host'] = dest__proto__host
      
 
 '''process the stdout text to extract filenames and their cheksum failure status and
@@ -82,7 +82,7 @@ def process_stdout(file,hostname):
                     dest_proto_host = dest_info[0]+"//"+dest_info[1].split("/")[0]
                 else:
                     dest_proto_host = execution__hostname
-                transfer_dict = {"filename":file_transferred[1].split("/")[-1],"source__proto__host":source_proto_host,"dest__proto__host":dest_proto_host}  
+                transfer_dict = {"filename":file_transferred[1].split("/")[-1],"source_proto_host":source_proto_host,"dest_proto_host":dest_proto_host}  
                 all_transfers.append(transfer_dict)
                
             if "ERROR" in info_log:
@@ -101,15 +101,15 @@ def process_stdout(file,hostname):
            
             expected = re.compile('Expected checksum \((.*)\) does')
             actual = re.compile('calculated checksum \((.*)\)')
-            integrity_err_files.append({"filename":integrity_err_str[0].strip(),"actual__checksum":actual.findall(integrity_err_str[1])[0],
-                                        "expected__checksum":expected.findall(integrity_err_str[1])[0],"source__proto__host":""
-					,"dest__proto__host":""})
+            integrity_err_files.append({"filename":integrity_err_str[0].strip(),"actual_checksum":actual.findall(integrity_err_str[1])[0],
+                                        "expected_checksum":expected.findall(integrity_err_str[1])[0],"source_proto_host":""
+					,"dest_proto_host":""})
             integrity_str = integrity_str[20:]
         for transfer_file in all_transfers:
             for integrity_file in integrity_err_files:
                       if integrity_file["filename"] == transfer_file["filename"]: 
-                         integrity_file["source__proto__host"] = transfer_file["source__proto__host"]
-                         integrity_file["dest__proto__host"] =  transfer_file["dest__proto__host"]
+                         integrity_file["source_proto_host"] = transfer_file["source_proto_host"]
+                         integrity_file["dest_proto_host"] =  transfer_file["dest_proto_host"]
      
 
         integrity_files = [f["filename"] for f in integrity_err_files]
@@ -163,51 +163,52 @@ def get_processed_events(client, start_dt,end_time,index):
         id = entry['_id']       
         entry = entry['_source']
         
-        if entry['user']!='bamboo':  # only consider bamboo users, if not remove the condition
-           continue
+#        if entry['user']!='bamboo':  # only consider bamboo users, if not remove the condition
+#           continue
+       
         if entry['int_error_count']!=0:  # counting total integrity errors
            global int_err_cnt
            # counting integrity errors in the session
            int_err_cnt += entry['int_error_count']
 
         # create the processed event with new values
-        modified_entry['root_xwf__id'] = entry['xwf__id']
+        modified_entry['root_xwf_id'] = entry['xwf__id']
         datetime = entry['@timestamp'].split(".")
         modified_entry['_index'] = index
-        modified_entry['start__time'] = entry['ts']
-        modified_entry['end__time'] = entry['local__dur'] if "local__dur" in entry else 10
-        modified_entry['end__time'] = modified_entry['start__time']+modified_entry['end__time']
-        modified_entry['job__id'] = entry['job__id']
-        modified_entry['submit__hostname'] = entry['submit__hostname'] if "submit__hostname" in entry else entry["submit_hostname"]
+        modified_entry['start_time'] = entry['ts']
+        modified_entry['end_time'] = entry['local__dur'] if "local__dur" in entry else 10
+        modified_entry['end_time'] = modified_entry['start_time']+modified_entry['end_time']
+        modified_entry['job_id'] = entry['job__id']
+        modified_entry['submit_hostname'] = entry['submit__hostname'] if "submit__hostname" in entry else entry["submit_hostname"]
         modified_entry['@timestamp'] = entry['@timestamp']
-        modified_entry['execution__hostname'] = entry['hostname'] if "hostname" in entry else ""
-        modified_entry['source__id'] = id
-        modified_entry['execution__site'] = entry['site']
-        modified_entry['job__type'] = entry['jobtype'] if "jobtype" in entry else ""
-        modified_entry['job__exitcode'] = entry['exitcode']
-        modified_entry['retry__attempt'] = 1
+        modified_entry['execution_hostname'] = entry['hostname'] if "hostname" in entry else ""
+        modified_entry['source_id'] = id
+        modified_entry['execution_site'] = entry['site']
+        modified_entry['job_type'] = entry['jobtype'] if "jobtype" in entry else ""
+        modified_entry['job_exitcode'] = entry['exitcode']
+        modified_entry['retry_attempt'] = 1
         modified_entry['executable'] = 1
-        modified_entry['user__submit'] = entry['wf_user']
-        modified_entry['user__remote']= entry['user']
-        modified_entry['local__dur'] = entry['local__dur'] if "local__dur" in entry else 0
+        modified_entry['user_submit'] = entry['wf_user']
+        modified_entry['user_remote']= entry['user']
+        modified_entry['local_dur'] = entry['local__dur'] if "local__dur" in entry else 0
        	modified_entry['_type'] = 'pegasus-composite-events-'
 
        	# processing stderr_text and stdout_text to get transfer files and their checksum failure status
         if 'stderr__text' in entry: 
-            stderr_processed,execution__hostname_1 = process_stdout(entry['stderr__text'],modified_entry['execution__hostname'])
+            stderr_processed,execution__hostname_1 = process_stdout(entry['stderr__text'],modified_entry['execution_hostname'])
                  
             transfer_files_stderr = stderr_processed[0]
             integrity_err_files_stderr = stderr_processed[1]
             if execution__hostname_1 != "":
-               modified_entry['execution__hostname'] = execution__hostname_1
+               modified_entry['execution_hostname'] = execution__hostname_1
         else:
             transfer_files_stderr,integrity_err_files_stderr = [],[]
         if 'stdout__text' in entry:	    
-            stdout_processed,execution__hostname_2  = process_stdout(entry['stdout__text'],modified_entry['execution__hostname'])
+            stdout_processed,execution__hostname_2  = process_stdout(entry['stdout__text'],modified_entry['execution_hostname'])
             transfer_files_stdout = stdout_processed[0]
             integrity_err_files_stdout = stdout_processed[1] 
             if execution__hostname_2 != "":
-               modified_entry['execution__hostname'] = execution__hostname_2
+               modified_entry['execution_hostname'] = execution__hostname_2
         else:
             transfer_files_stdout,integrity_err_files_stdout = [],[]
         
@@ -220,14 +221,14 @@ def get_processed_events(client, start_dt,end_time,index):
             if file==[]:
                 continue
             modified_entry = modified_entry.copy()
-            add_file_entries(modified_entry,entry_id,id,file["filename"],0,"","",file["source__proto__host"],file["dest__proto__host"])
+            add_file_entries(modified_entry,entry_id,id,file["filename"],0,"","",file["source_proto_host"],file["dest_proto_host"])
             entry_id = entry_id + 1
             data.append(modified_entry)
         for file in integrity_err_files:
             if file ==[]:
                 continue
             modified_entry = modified_entry.copy()
-            add_file_entries(modified_entry,entry_id,id,file["filename"],1,file["actual__checksum"],file["expected__checksum"],file["source__proto__host"],file["dest__proto__host"])
+            add_file_entries(modified_entry,entry_id,id,file["filename"],1,file["actual_checksum"],file["expected_checksum"],file["source_proto_host"],file["dest_proto_host"])
             #modified_entry ["orig_id"]=modified_entry["orig_id"][:-2]+str(ord(modified_entry["orig_id"][-1])+1)
             #modified_entry["_id"] = entry_id
             entry_id = entry_id + 1
@@ -247,7 +248,7 @@ def main():
     client = Elasticsearch('https://galactica.isi.edu/es/', http_auth = ('', ''),timeout=60000,max_retries=10)
 
     # the number of days data that needs to be collected 
-    start_dt = datetime.datetime.utcnow() - datetime.timedelta(days=12)
+    start_dt = datetime.datetime.utcnow() - datetime.timedelta(days=30)
     end_dt = datetime.datetime.utcnow()
     
     current_dt = start_dt
@@ -261,12 +262,12 @@ def main():
     #file containing the processed events
     csvfile = open("events.csv",'w')
 
-    # to delete the existing index
+    #to delete the existing index
     '''
     if client.indices.exists(index+"*"):
        client.indices.delete(index+'*')
-     '''
-
+    '''
+     
     # output_rows contains a list of processed events returned by the module get_processed_events    
     output_rows = []
 
@@ -277,10 +278,11 @@ def main():
         
         print(len(events))
         if events!= []:
+
             #save the event in ElasticSearch with new index 
-            #result = helpers.bulk(client,events,refresh=True)
+            result = helpers.bulk(client,events,refresh=True)
             output_rows = output_rows + events 
-        print(len(events)) 
+        
         current_dt = time_delta + datetime.timedelta(seconds = 1)
         time_delta = time_delta + datetime.timedelta(hours = 5)
 
