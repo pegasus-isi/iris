@@ -9,32 +9,37 @@ import sys
 import re
 
 from dateutil.parser import parse
+from pprint import pprint, pformat
+
 from elasticsearch import helpers
 from elasticsearch import Elasticsearch
 from elasticsearch_dsl import Search
-
-from pprint import pprint, pformat
 
 import urllib3
 urllib3.disable_warnings()
 from urllib.parse import urlencode
 
+index_created = {}
 plan_cache = {}
 entry_id = 1
 int_err_cnt  = 0
 int_host_cnt =0
-from dateutil.parser import parse
+
+index_body = {
+    "settings" : {
+        "number_of_shards": 5,
+        "number_of_replicas": 1
+    }
+}
 
 
-def add_file_entries(modified_entry,entry_id,id,filename,checksum,actual__checksum,expected__checksum,source__proto__host,dest__proto__host):
-     modified_entry["_id"] = entry_id
-     modified_entry["origin_id"] = id
+def add_file_entries(modified_entry, filename, checksum, actual_checksum, expected_checksum, source_proto_host, dest_proto_host):
      modified_entry['filename'] = filename
      modified_entry['checksum_failure'] = checksum
-     modified_entry["actual_checksum"] = actual__checksum
-     modified_entry["expected_checksum"] = expected__checksum  
-     modified_entry['source_proto_host'] = source__proto__host
-     modified_entry['dest_proto_host'] = dest__proto__host
+     modified_entry["actual_checksum"] = actual_checksum
+     modified_entry["expected_checksum"] = expected_checksum  
+     modified_entry['source_proto_host'] = source_proto_host
+     modified_entry['dest_proto_host'] = dest_proto_host
      
 
 '''process the stdout text to extract filenames and their cheksum failure status and
@@ -121,32 +126,29 @@ def process_stdout(file,hostname):
          
         return [all_transfers,integrity_err_files],execution__hostname
 
-'''
-process the incoming events
-and return a list of processed events
-Parameters
-     client:  ElasticSearch client
-     start_dt : start time for query processing
-     end_dt: end times for query processing
-     index: index of where to store the new events
-'''
-def get_processed_events(client, start_dt,end_time,index):
+def get_events(client, start_dt):
+    '''
+    process the incoming events
+    and return a list of processed events
+    Parameters
+         client:  ElasticSearch client
+         start_dt : start time for query processing
+         end_dt: end times for query processing
+         index: index of where to store the new events
+    '''
      
     start_time = start_dt.strftime('%Y-%m-%dT%H:%M:%S')
-    print('Quering for data starting with ' + start_time)
+    end_dt = start_dt + datetime.timedelta(hours = 1)
+    end_time = end_dt.strftime('%Y-%m-%dT%H:%M:%S')
+    print('Quering for data in ' + start_time + ' .. ' + end_time)
     
     s = Search(using=client, index='pegasus-composite-events-*') \
                .query('match', event='stampede.job_inst.composite') \
-	       .query('match', pegasus__version = '4.9.2panorama', _expand__to_dot = False)\
-               .filter('range', ** {'@timestamp': {'gt': start_time, 'lt':end_time}}) 
+               .filter('range', ** {'@timestamp': {'gt': start_time, 'lt':end_time, 'time_zone': '+00:00'}}) 
 
     s = s.sort('ts')  
-    s = s[:s.count()]
-    if len(list(s)) == 0:
-        return []
-    else: 
-        print(len(list(s)))
-      
+    s = s[0:10000]
+
     try:
         response = s.execute()
         if not response.success():
@@ -154,44 +156,44 @@ def get_processed_events(client, start_dt,end_time,index):
     except Exception as e:
         print(e, 'Error accessing Elasticsearch')
         sys.exit(1)
-   
-   
+ 
+    #pprint(response.to_dict()['hits']['hits'])
+  
     data = []
     for entry in response.to_dict()['hits']['hits']:
+        # create the processed event with new values
+        
         # modified entry is the dictionary for the event generated after processing the event from ElasticSearch 
         modified_entry={}
-        id = entry['_id']       
+
+        # top level
+        modified_entry['source_id'] = entry['_id']       
+
+        # rest is from the _source part
         entry = entry['_source']
         
-#        if entry['user']!='bamboo':  # only consider bamboo users, if not remove the condition
-#           continue
-       
-        if entry['int_error_count']!=0:  # counting total integrity errors
-           global int_err_cnt
-           # counting integrity errors in the session
-           int_err_cnt += entry['int_error_count']
-
-        # create the processed event with new values
+        modified_entry['@timestamp'] = entry['@timestamp']
         modified_entry['root_xwf_id'] = entry['xwf__id']
-        datetime = entry['@timestamp'].split(".")
-        modified_entry['_index'] = index
+
+        duration = entry['local__dur'] if "local__dur" in entry else 1
+        modified_entry['ts'] = entry['ts']
         modified_entry['start_time'] = entry['ts']
-        modified_entry['end_time'] = entry['local__dur'] if "local__dur" in entry else 10
-        modified_entry['end_time'] = modified_entry['start_time']+modified_entry['end_time']
+        modified_entry['end_time'] = modified_entry['start_time'] + duration
+
         modified_entry['job_id'] = entry['job__id']
         modified_entry['submit_hostname'] = entry['submit__hostname'] if "submit__hostname" in entry else entry["submit_hostname"]
-        modified_entry['@timestamp'] = entry['@timestamp']
         modified_entry['execution_hostname'] = entry['hostname'] if "hostname" in entry else ""
-        modified_entry['source_id'] = id
         modified_entry['execution_site'] = entry['site']
         modified_entry['job_type'] = entry['jobtype'] if "jobtype" in entry else ""
         modified_entry['job_exitcode'] = entry['exitcode']
-        modified_entry['retry_attempt'] = 1
-        modified_entry['executable'] = 1
+
+        # TODO
+        #modified_entry['retry_attempt'] = 1
+        #modified_entry['executable'] = 1
+
         modified_entry['user_submit'] = entry['wf_user']
-        modified_entry['user_remote']= entry['user']
-        modified_entry['local_dur'] = entry['local__dur'] if "local__dur" in entry else 0
-       	modified_entry['_type'] = 'pegasus-composite-events-'
+        #modified_entry['user_remote']= entry['user']
+        modified_entry['local_dur'] = duration
 
        	# processing stderr_text and stdout_text to get transfer files and their checksum failure status
         if 'stderr__text' in entry: 
@@ -215,87 +217,82 @@ def get_processed_events(client, start_dt,end_time,index):
         transfer_files = transfer_files_stderr+transfer_files_stdout
         integrity_err_files = integrity_err_files_stderr+integrity_err_files_stdout
               
-        global entry_id 
+        entry_id = 1 
         for file in transfer_files:
-           
             if file==[]:
                 continue
-            modified_entry = modified_entry.copy()
-            add_file_entries(modified_entry,entry_id,id,file["filename"],0,"","",file["source_proto_host"],file["dest_proto_host"])
+            new_entry = modified_entry.copy()
+            # create a unique, but reproducible id
+            new_entry['my_id'] = new_entry['source_id'] + '_' + str(entry_id)
+            add_file_entries(new_entry, file["filename"], 0, "", "", file["source_proto_host"], file["dest_proto_host"])
             entry_id = entry_id + 1
-            data.append(modified_entry)
+            data.append(new_entry)
+
         for file in integrity_err_files:
             if file ==[]:
                 continue
-            modified_entry = modified_entry.copy()
-            add_file_entries(modified_entry,entry_id,id,file["filename"],1,file["actual_checksum"],file["expected_checksum"],file["source_proto_host"],file["dest_proto_host"])
-            #modified_entry ["orig_id"]=modified_entry["orig_id"][:-2]+str(ord(modified_entry["orig_id"][-1])+1)
-            #modified_entry["_id"] = entry_id
+            new_entry = modified_entry.copy()
+            # create a unique, but reproducible id
+            new_entry['my_id'] = new_entry['source_id'] + '_' + str(entry_id)
+            add_file_entries(new_entry, file["filename"], 1, file["actual_checksum"], file["expected_checksum"], file["source_proto_host"], file["dest_proto_host"])
             entry_id = entry_id + 1
-            #modified_entry['filename'] = file["filename"]
-            #modified_entry["actual__checksum"] = file["actual__checksum"]
-            #modified_entry["expected__checksum"] = file["expected__checksum"]
-            #modified_entry['checksum__failure'] = 1
-            #modified_entry['source__proto__host'] = file["source__proto__host"]
-            #modified_entry['dest__proto__host'] = file["dest__proto__host"]
-            data.append(modified_entry)
+            data.append(new_entry)
+            
     return data
 
 
 def main():
 
     #connecting to ElasticSerch Client 
-    client = Elasticsearch('https://galactica.isi.edu/es/', http_auth = ('', ''),timeout=60000,max_retries=10)
+    client = Elasticsearch('https://galactica.isi.edu/es/', 
+                           http_auth = (os.environ['ES_USERNAME'], os.environ['ES_PASSWORD']),
+                           timeout=60000,
+                           max_retries=10)
 
     # the number of days data that needs to be collected 
-    start_dt = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+    start_dt = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
     end_dt = datetime.datetime.utcnow()
     
     current_dt = start_dt
-    time_delta = current_dt+datetime.timedelta(hours=5)
-    print(current_dt,end_dt)
-    results = True
 
-    #index to write events to
-    index = "processed-composite-workflow-events"
+    while current_dt < end_dt:
 
-    #file containing the processed events
-    csvfile = open("events.csv",'w')
-
-    #to delete the existing index
-    '''
-    if client.indices.exists(index+"*"):
-       client.indices.delete(index+'*')
-    '''
-     
-    # output_rows contains a list of processed events returned by the module get_processed_events    
-    output_rows = []
-
-    while time_delta < end_dt:
+        print(current_dt)
         
         results = False
-        events = get_processed_events(client, current_dt,time_delta,index+current_dt.strftime('%Y.%m.%d'))
-        
-        print(len(events))
-        if events!= []:
+        for event in get_events(client, current_dt):
 
-            #save the event in ElasticSearch with new index 
-            result = helpers.bulk(client,events,refresh=True)
-            output_rows = output_rows + events 
-        
-        current_dt = time_delta + datetime.timedelta(seconds = 1)
-        time_delta = time_delta + datetime.timedelta(hours = 5)
+            pprint(event)
 
-    # store the eprocessed events in csv file 
-    if len(output_rows)>0:    
-        dict_writer = csv.DictWriter(csvfile,fieldnames=output_rows[0].keys())
-        dict_writer.writeheader()
-        dict_writer.writerows(output_rows)
-    csvfile.close()
-    
-    print("Total events: ",len(output_rows))
-    global int_err_count
-    print("Total integrity errors occurred: ", int_err_cnt)
+            current_dt = parse(event['@timestamp']).replace(tzinfo=None)
+
+            # TODO - get dt from event
+            index = 'iris-events-' + current_dt.strftime('%Y.%m')
+
+            if index not in index_created:
+                print('Trying to create index: ' + index)
+                try:
+                    client.indices.create(index=index, body=index_body)
+                except:
+                    pass
+                index_created[index] = True
+            
+            results = True
+
+            # save the event in ElasticSearch with new index 
+            res = client.index(index=index, doc_type='iris-event',
+                               id=event['my_id'], body=event)
+
+        # back up so that we don't miss events the same second
+        #current_dt = current_dt - datetime.timedelta(seconds=1)
+
+        #if results == True:
+        #    sys.exit(1)
+
+        if results == False:
+            # move ts forward
+            current_dt = current_dt + datetime.timedelta(hours=1)
+
 
 if __name__=="__main__":
     main()
